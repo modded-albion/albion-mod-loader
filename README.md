@@ -6,7 +6,8 @@ mod DLLs from the folder `mods` of the game.
 
 The code comes from the research mod of Masters of Albion Reforged (`tools/research_mod`). That repository stays as
 it is. The research parts (the dump, the inspector, the tests with the virtual input, the research queries) are not
-in this project.
+in this project. The inspector is the mod DLL of the project `inspector`; the loader gives it the queries of the
+loader and of the mods (see below).
 
 ## What the loader owns
 
@@ -44,6 +45,30 @@ The interface is the C header `external/common/src/api/include/moa_mod/api/ModAp
 
 The C++ side of the interface for a mod is `moa_mod_sdk` in common (`ModHost`, `BindFields`, `HostLogSink`).
 
+## Inspector queries
+
+The loader keeps a list of named queries: each mod adds its own queries in `MoaModInit` (`addQuery`), and each query
+name has one owner. The inspector mod lists them (`listQueries`, any thread) and calls one (`callQuery`). The loader
+runs a query only on the main thread, with the same guard as the other calls into a mod: an access violation stops
+the calls to that mod. A query of a mod that failed gives an error.
+
+The queries of the loader itself:
+
+| Query | What it gives |
+|---|---|
+| `mods.status` | The state of the loader, the status of each mod and of the objects and the maps, the mod DLLs, the menu bar |
+| `mods.list` | The mod zips (as the Mod list shows them) and the mod DLLs (`dlls`) |
+| `mods.settings` | mods.json: the path, the settings in use, the settings that the user asked for, the check of the file, the last reload, the messages |
+| `mods.reload` | Reads mods.json again and gives each mod its objects |
+| `maps.status` | The state of the map override |
+| `objects.status` | The state of the custom objects (parameter `filter`) |
+| `hooks.status` | The method hooks of the loader and the tasks that wait |
+| `overlay.pin` | Pins the menu bar (parameter `pinned`) |
+| `overlay.edit` | Changes a field as the menu bar does (`section`, `key`, `value`, `save`), or turns a mod zip (`mod`) or a mod DLL (`dll`) on or off (`enabled`) |
+| `overlay.probe` | Makes a new swap chain, as the game does when it changes the display mode |
+
+In `mods.status`, a status keeps its own name (for example `camera`) and gets the name of its mod as `mod`.
+
 ## Build
 
 Requirements: Visual Studio with the C++ tools, and the vcpkg checkout of Masters of Albion Reforged.
@@ -72,8 +97,8 @@ Git 2.43 refuses local file submodules by default, so each submodule command nee
 ## Tests
 
 `ctest --preset x64-release` runs the GoogleTest tests: the settings of the loader, the registry of the mods, the table
-of a mod, the DLL loader (with six small test mods that the build makes: correct, failed init, old interface, access
-violation, same id, bad id), the mod zips, the map overrides, the rules of the menu bar and the pack format.
+of a mod and its queries, the DLL loader (with six small test mods that the build makes: correct, failed init, old
+interface, access violation, same id, bad id), the mod zips, the map overrides, the rules of the menu bar and the pack format.
 
 ## Install (not done by the build)
 
