@@ -1,0 +1,3 @@
+[submodule "external/common"]
+	path = external/common
+	url = D:/masters_of_albion/projects/common
