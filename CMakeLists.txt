@@ -30,38 +30,38 @@ find_package(nlohmann_json CONFIG REQUIRED)
 # mod zips, the map overrides, the rules of the menu bar and the pack format of the custom objects.
 add_library(
   moa_loader_core STATIC
-  src/core/include/moa_mod/loader/HostTable.h
-  src/core/include/moa_mod/loader/LoaderSettings.h
-  src/core/include/moa_mod/loader/ModRegistry.h
-  src/core/include/moa_mod/maps/MapOverrideSet.h
-  src/core/include/moa_mod/mods/ModCatalogue.h
-  src/core/include/moa_mod/objects/CarriableMerge.h
-  src/core/include/moa_mod/objects/KnackMerge.h
-  src/core/include/moa_mod/objects/Pack.h
-  src/core/include/moa_mod/objects/PackTables.h
-  src/core/include/moa_mod/objects/PackWriter.h
-  src/core/include/moa_mod/objects/ResourceLoads.h
-  src/core/include/moa_mod/objects/TemplatePlan.h
-  src/core/include/moa_mod/objects/TypedMerge.h
-  src/core/include/moa_mod/overlay/HookRules.h
-  src/core/include/moa_mod/overlay/OverlayRules.h
-  src/core/src/loader/HostTable.cpp
-  src/core/src/loader/LoaderSettings.cpp
-  src/core/src/loader/ModRegistry.cpp
-  src/core/src/maps/MapOverrideSet.cpp
-  src/core/src/mods/ModCatalogue.cpp
-  src/core/src/objects/CarriableMerge.cpp
-  src/core/src/objects/KnackMerge.cpp
-  src/core/src/objects/Pack.cpp
-  src/core/src/objects/PackTables.cpp
-  src/core/src/objects/PackWriter.cpp
-  src/core/src/objects/ResourceLoads.cpp
-  src/core/src/objects/TemplatePlan.cpp
-  src/core/src/objects/TypedMerge.cpp
-  src/unitymesh/include/moa/unitymesh/RuntimeMesh.h
-  src/unitymesh/src/RuntimeMesh.cpp
+  src/core/moa_mod/loader/HostTable.h
+  src/core/moa_mod/loader/LoaderSettings.h
+  src/core/moa_mod/loader/ModRegistry.h
+  src/core/moa_mod/maps/MapOverrideSet.h
+  src/core/moa_mod/mods/ModCatalogue.h
+  src/core/moa_mod/objects/CarriableMerge.h
+  src/core/moa_mod/objects/KnackMerge.h
+  src/core/moa_mod/objects/Pack.h
+  src/core/moa_mod/objects/PackTables.h
+  src/core/moa_mod/objects/PackWriter.h
+  src/core/moa_mod/objects/ResourceLoads.h
+  src/core/moa_mod/objects/TemplatePlan.h
+  src/core/moa_mod/objects/TypedMerge.h
+  src/core/moa_mod/overlay/HookRules.h
+  src/core/moa_mod/overlay/OverlayRules.h
+  src/core/moa_mod/loader/HostTable.cpp
+  src/core/moa_mod/loader/LoaderSettings.cpp
+  src/core/moa_mod/loader/ModRegistry.cpp
+  src/core/moa_mod/maps/MapOverrideSet.cpp
+  src/core/moa_mod/mods/ModCatalogue.cpp
+  src/core/moa_mod/objects/CarriableMerge.cpp
+  src/core/moa_mod/objects/KnackMerge.cpp
+  src/core/moa_mod/objects/Pack.cpp
+  src/core/moa_mod/objects/PackTables.cpp
+  src/core/moa_mod/objects/PackWriter.cpp
+  src/core/moa_mod/objects/ResourceLoads.cpp
+  src/core/moa_mod/objects/TemplatePlan.cpp
+  src/core/moa_mod/objects/TypedMerge.cpp
+  src/unitymesh/moa/unitymesh/RuntimeMesh.h
+  src/unitymesh/moa/unitymesh/RuntimeMesh.cpp
 )
-target_include_directories(moa_loader_core PUBLIC src/core/include src/unitymesh/include)
+target_include_directories(moa_loader_core PUBLIC src/core src/unitymesh)
 target_link_libraries(
   moa_loader_core
   PUBLIC moa_common
@@ -74,8 +74,8 @@ target_link_libraries(
 moa_set_warnings(moa_loader_core)
 
 # The load of the mod DLLs. Windows only, but it needs no game: the tests load small test mods.
-add_library(moa_loader_dlls STATIC src/dlls/include/moa_mod/loader/ModDllLoader.h src/dlls/src/ModDllLoader.cpp)
-target_include_directories(moa_loader_dlls PUBLIC src/dlls/include)
+add_library(moa_loader_dlls STATIC src/dlls/moa_mod/loader/ModDllLoader.h src/dlls/moa_mod/loader/ModDllLoader.cpp)
+target_include_directories(moa_loader_dlls PUBLIC src/dlls)
 target_compile_definitions(moa_loader_dlls PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
 target_link_libraries(moa_loader_dlls PUBLIC moa_loader_core)
 moa_set_warnings(moa_loader_dlls)
