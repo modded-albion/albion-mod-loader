@@ -126,7 +126,9 @@ ModDllLoader::ModDllLoader(HostServices& services, HostInfo info, ExceptionFilte
 
 ModDll& ModDllLoader::Refuse(ModDll& mod, std::string error, bool unload)
 {
+	// The loader calls the mod no more, also for a task that the mod posted in its init.
 	_services.Registry().RemoveOwner(mod.owner);
+	_services.Registry().SetFailed(mod.owner, error);
 	mod.state = ModDllState::Refused;
 	mod.error = std::move(error);
 	mod.shutdown = nullptr;

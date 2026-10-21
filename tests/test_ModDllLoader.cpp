@@ -112,6 +112,7 @@ TEST(ModDllLoader, UnloadsAModWhoseInitFailsAndRemovesItsRegistrations)
 	EXPECT_EQ(mod.state, ModDllState::Refused);
 	EXPECT_NE(mod.error.find("returned 0"), std::string::npos);
 	EXPECT_EQ(mod.module, nullptr);
+	EXPECT_TRUE(services.registry.Failed(mod.owner));
 	EXPECT_TRUE(services.registry.Settings().empty());
 	EXPECT_TRUE(services.registry.Fields().empty());
 	EXPECT_TRUE(services.registry.MethodCallbacks().empty());
