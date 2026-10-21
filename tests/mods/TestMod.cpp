@@ -15,8 +15,8 @@
 #include <memory>
 #include <string>
 
-#include <moa_mod/api/ModApi.h>
-#include <moa_mod/sdk/ModHost.h>
+#include <mod_api/ModApi.h>
+#include <mod_sdk/ModHost.h>
 
 #ifndef MOA_TEST_MOD_KIND
 #error "MOA_TEST_MOD_KIND is not set"

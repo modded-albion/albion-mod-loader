@@ -29,7 +29,7 @@ Only one module may own these, so the loader owns them and the mods use them thr
 
 ## The interface between the loader and a mod
 
-The interface is the C header `external/common/src/api/moa_mod/api/ModApi.h` (version
+The interface is the C header `external/common/src/mod_api/ModApi.h` (version
 `MOA_MOD_API_VERSION`). Only plain C types go across it, because each module has its own C runtime. In short:
 
 - A mod DLL exports `MoaModApiVersion`, `MoaModGetInfo`, `MoaModInit(const MoaHostApi*, uint32_t)` and
@@ -87,6 +87,15 @@ vcpkg checkout of the reforged repository; this repository has no vcpkg submodul
 `D:/masters_of_albion/cache/vcpkg-archives` and the downloads `D:/masters_of_albion/cache/vcpkg-downloads`. Dear
 ImGui, MinHook and miniz compile from their source archives (`cmake/ModImGui.cmake`, `cmake/ModMinHook.cmake`,
 common's `cmake/Miniz.cmake`) with fixed SHA-512 values, from the vcpkg download cache.
+
+## Folders and include lines
+
+Each library has one folder under `src`: `core` (`moa_loader_core`, with `unitymesh`), `dlls` (`moa_loader_dlls`) and
+`game` (`version.dll`). Each target puts `src` on the include path, and common puts `external/common/src` there. An
+include line thus names the library folder and the file, for example `#include <core/LoaderSettings.h>`,
+`#include "game/overlay/Overlay.h"` or `#include <mod_core/Hotkey.h>`. The folders of common have other names (for
+example `mod_core`, `mod_game`), so an include path never finds two files. The C++ namespaces do not follow the
+folders.
 
 ## The link to common
 

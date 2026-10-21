@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <core/PackTables.h>
 #include <gtest/gtest.h>
-#include <moa_mod/objects/PackTables.h>
 
 using namespace moa_mod::objects;
 

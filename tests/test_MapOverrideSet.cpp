@@ -6,12 +6,12 @@
 #include <string>
 #include <vector>
 
+#include <core/LoaderSettings.h>
+#include <core/MapOverrideSet.h>
+#include <core/ModCatalogue.h>
 #include <gtest/gtest.h>
-#include <moa/mapoverride/MapOverride.h>
-#include <moa_mod/SettingsFields.h>
-#include <moa_mod/loader/LoaderSettings.h>
-#include <moa_mod/maps/MapOverrideSet.h>
-#include <moa_mod/mods/ModCatalogue.h>
+#include <mapoverride/MapOverride.h>
+#include <mod_core/SettingsFields.h>
 
 namespace
 {

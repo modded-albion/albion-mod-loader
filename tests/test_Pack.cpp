@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
+#include <core/Pack.h>
+#include <core/PackWriter.h>
 #include <gtest/gtest.h>
-#include <moa_mod/objects/Pack.h>
-#include <moa_mod/objects/PackWriter.h>
 #include <nlohmann/json.hpp>
 
 using namespace moa_mod::objects;

@@ -6,11 +6,11 @@
 #include <string_view>
 #include <vector>
 
+#include <core/LoaderSettings.h>
+#include <core/ModCatalogue.h>
 #include <gtest/gtest.h>
-#include <moa/modzip/ModInfo.h>
-#include <moa/modzip/Zip.h>
-#include <moa_mod/loader/LoaderSettings.h>
-#include <moa_mod/mods/ModCatalogue.h>
+#include <modzip/ModInfo.h>
+#include <modzip/Zip.h>
 
 namespace
 {

@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
+#include <core/KnackMerge.h>
 #include <gtest/gtest.h>
-#include <moa_mod/objects/KnackMerge.h>
 #include <nlohmann/json.hpp>
 
 using namespace moa_mod::objects;

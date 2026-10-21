@@ -9,9 +9,9 @@
 #include <string>
 #include <vector>
 
+#include <core/HostTable.h>
+#include <dlls/ModDllLoader.h>
 #include <gtest/gtest.h>
-#include <moa_mod/loader/HostTable.h>
-#include <moa_mod/loader/ModDllLoader.h>
 #include <windows.h>
 
 using namespace moa_mod::loader;

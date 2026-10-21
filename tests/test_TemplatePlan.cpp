@@ -8,9 +8,9 @@
 #include <string>
 #include <vector>
 
+#include <core/TemplatePlan.h>
 #include <gtest/gtest.h>
-#include <moa/unitymesh/RuntimeMesh.h>
-#include <moa_mod/objects/TemplatePlan.h>
+#include <unitymesh/RuntimeMesh.h>
 
 using namespace moa_mod::objects;
 

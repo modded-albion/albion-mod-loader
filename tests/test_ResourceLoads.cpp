@@ -6,9 +6,9 @@
 
 #include <array>
 
+#include <core/LoaderSettings.h>
+#include <core/ResourceLoads.h>
 #include <gtest/gtest.h>
-#include <moa_mod/loader/LoaderSettings.h>
-#include <moa_mod/objects/ResourceLoads.h>
 
 using namespace moa_mod;
 using namespace moa_mod::objects;

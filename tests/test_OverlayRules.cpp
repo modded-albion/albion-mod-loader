@@ -2,8 +2,8 @@
  * Copyright (c) 2026 Masters of Albion Reforged developers
  *****************************************************************************/
 
+#include <core/OverlayRules.h>
 #include <gtest/gtest.h>
-#include <moa_mod/overlay/OverlayRules.h>
 
 using namespace moa_mod::overlay;
 

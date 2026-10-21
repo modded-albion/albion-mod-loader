@@ -5,8 +5,8 @@
 #include <set>
 #include <string>
 
+#include <core/LoaderSettings.h>
 #include <gtest/gtest.h>
-#include <moa_mod/loader/LoaderSettings.h>
 #include <nlohmann/json.hpp>
 
 using namespace moa_mod;

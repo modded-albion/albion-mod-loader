@@ -10,8 +10,8 @@
 #include <string>
 #include <vector>
 
+#include <core/TypedMerge.h>
 #include <gtest/gtest.h>
-#include <moa_mod/objects/TypedMerge.h>
 #include <nlohmann/json.hpp>
 
 using namespace moa_mod::objects;

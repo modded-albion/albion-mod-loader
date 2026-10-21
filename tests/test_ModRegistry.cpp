@@ -7,8 +7,8 @@
 #include <string>
 #include <vector>
 
+#include <core/ModRegistry.h>
 #include <gtest/gtest.h>
-#include <moa_mod/loader/ModRegistry.h>
 
 using namespace moa_mod;
 using namespace moa_mod::loader;

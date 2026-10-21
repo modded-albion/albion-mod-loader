@@ -6,8 +6,8 @@
 
 #include <array>
 
+#include <core/HookRules.h>
 #include <gtest/gtest.h>
-#include <moa_mod/overlay/HookRules.h>
 
 using namespace moa_mod::overlay;
 
