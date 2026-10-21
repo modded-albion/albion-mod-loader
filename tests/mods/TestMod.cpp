@@ -3,7 +3,7 @@
  *****************************************************************************/
 
 // A small mod DLL for the tests of the loader. MOA_TEST_MOD_KIND selects what it does:
-// 1: a correct mod that registers a settings section, a field, an action and a method callback.
+// 1: a correct mod that registers a settings section, a field, an action, a method callback and a query.
 // 2: a mod whose init registers and then returns 0.
 // 3: a mod of another interface version.
 // 4: a mod whose init causes an access violation.
@@ -85,6 +85,9 @@ uint32_t Init(const MoaHostApi* api, uint32_t apiVersion)
 	ok = ok && s_host->AddAction(action, [] { ++s_actions; });
 	ok = ok && s_host->AddMethodCallback({.space = "", .className = "GameManager", .method = "Update", .parameterTypes = {}},
 	                                     MOA_HOOK_AFTER, "count", [](const MoaCall& /*call*/) { ++s_calls; });
+	ok = ok && s_host->AddQuery("test.speed", "The speed of the test mod.", [](const nlohmann::json& params) {
+		return nlohmann::json {{"speed", s_speed + params.value("add", 0.0)}};
+	});
 #if MOA_TEST_MOD_KIND == 2
 	return 0;
 #elif MOA_TEST_MOD_KIND == 4

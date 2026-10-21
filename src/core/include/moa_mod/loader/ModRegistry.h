@@ -112,6 +112,16 @@ struct StatusEntry
 	void* user = nullptr;
 };
 
+/// A query of the inspector, for example "sky.state".
+struct QueryEntry
+{
+	OwnerId owner = 0;
+	std::string name;
+	std::string help;
+	MoaQueryFn query = nullptr;
+	void* user = nullptr;
+};
+
 /// The hotkey of an action, after the hotkeys of mods.json replace the defaults.
 struct HotkeyBinding
 {
@@ -120,8 +130,8 @@ struct HotkeyBinding
 	Hotkey hotkey;
 };
 
-/// All that the loader and the mods registered: method callbacks, settings sections, menu fields, actions, readouts
-/// and status readers. It checks each registration, so that two mods cannot own the same settings section or the same
+/// All that the loader and the mods registered: method callbacks, settings sections, menu fields, actions, readouts,
+/// status readers and queries. It checks each registration, so that two mods cannot own the same settings section or the same
 /// hotkey name. It holds only plain data and C function pointers; the game side installs the hooks and calls the
 /// functions. Main thread only, except during the start (one thread).
 class ModRegistry
@@ -141,6 +151,8 @@ public:
 	[[nodiscard]] moa::Result<size_t> AddReadout(OwnerId owner, const char* menu, const char* group, MoaReadFn read,
 	                                             void* user);
 	[[nodiscard]] moa::Result<void> SetStatusReader(OwnerId owner, MoaReadFn read, void* user);
+	/// Add a query of the inspector. Each query name has one owner.
+	[[nodiscard]] moa::Result<void> AddQuery(OwnerId owner, std::string name, std::string help, MoaQueryFn query, void* user);
 
 	/// Remove every registration of an owner, for example after its init failed.
 	void RemoveOwner(OwnerId owner);
@@ -156,12 +168,14 @@ public:
 	[[nodiscard]] const std::vector<ActionEntry>& Actions() const { return _actions; }
 	[[nodiscard]] const std::vector<ReadoutEntry>& Readouts() const { return _readouts; }
 	[[nodiscard]] const std::vector<StatusEntry>& Statuses() const { return _statuses; }
+	[[nodiscard]] const std::vector<QueryEntry>& Queries() const { return _queries; }
 
 	/// The methods that have callbacks of an owner.
 	[[nodiscard]] std::vector<MethodKey> MethodsOf(OwnerId owner) const;
 	[[nodiscard]] const FieldEntry* FindField(size_t id) const;
 	[[nodiscard]] const ActionEntry* FindAction(size_t id) const;
 	[[nodiscard]] const ActionEntry* FindActionByHotkey(std::string_view hotkey) const;
+	[[nodiscard]] const QueryEntry* FindQuery(std::string_view name) const;
 
 	/// The hotkeys of the actions: the hotkey in `overrides` (the object `hotkeys` of mods.json) or the default. A hotkey
 	/// that an earlier action uses already is off for the later action; `errors` gets the reason.
@@ -179,6 +193,7 @@ private:
 	std::vector<ActionEntry> _actions;
 	std::vector<ReadoutEntry> _readouts;
 	std::vector<StatusEntry> _statuses;
+	std::vector<QueryEntry> _queries;
 	size_t _nextId = 1;
 };
 

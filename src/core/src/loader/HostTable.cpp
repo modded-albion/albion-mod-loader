@@ -7,6 +7,7 @@
 #include <utility>
 
 #include <moa_mod/loader/HostTable.h>
+#include <nlohmann/json.hpp>
 
 namespace moa_mod::loader
 {
@@ -188,6 +189,77 @@ uint32_t SetStatusReader(void* context, MoaReadFn read, void* user)
 	                [&](HostTable& table) { return table.Services().Registry().SetStatusReader(table.Owner(), read, user); });
 }
 
+uint32_t AddQuery(void* context, const char* name, const char* help, MoaQueryFn query, void* user)
+{
+	return Register(context, std::format("the query '{}'", Copy(name)), [&](HostTable& table) {
+		return table.Services().Registry().AddQuery(table.Owner(), Copy(name), Copy(help), query, user);
+	});
+}
+
+void Give(MoaText* text, std::string_view value)
+{
+	if (text != nullptr && text->assign != nullptr)
+	{
+		text->assign(text->context, value.data(), value.size());
+	}
+}
+
+void ListQueries(void* context, MoaText* list)
+{
+	if (context == nullptr)
+	{
+		return;
+	}
+	auto& table = TableOf(context);
+	(void)Guard(table, "the list of the queries", [&]() -> uint32_t {
+		const auto& registry = table.Services().Registry();
+		auto items = nlohmann::json::array();
+		for (const auto& query : registry.Queries())
+		{
+			items.push_back({{"name", query.name}, {"help", query.help}, {"mod", registry.OwnerName(query.owner)}});
+		}
+		Give(list, items.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+		return 1;
+	});
+}
+
+uint32_t CallQuery(void* context, const char* name, const char* params, MoaText* result)
+{
+	if (context == nullptr)
+	{
+		return 0;
+	}
+	auto& table = TableOf(context);
+	// An unknown query and an error of a query go to the caller, not to the log.
+	try
+	{
+		const auto* query = table.Services().Registry().FindQuery(Copy(name));
+		if (query == nullptr)
+		{
+			Give(result, std::format("the query '{}' is not known", Copy(name)));
+			return 0;
+		}
+		const auto parameters = params == nullptr ? std::string("{}") : std::string(params);
+		auto answer = table.Services().CallQuery(*query, parameters);
+		if (!answer)
+		{
+			Give(result, answer.GetError().message);
+			return 0;
+		}
+		Give(result, *answer);
+		return 1;
+	}
+	catch (const std::exception& error)
+	{
+		Give(result, error.what());
+	}
+	catch (...)
+	{
+		Give(result, "an unknown exception in the loader");
+	}
+	return 0;
+}
+
 void ShowMessage(void* context, const char* text, double seconds)
 {
 	if (context == nullptr || text == nullptr)
@@ -201,6 +273,22 @@ void ShowMessage(void* context, const char* text, double seconds)
 	});
 }
 } // namespace
+
+moa::Result<std::string> RunQueryFunction(const QueryEntry& query, const std::string& params)
+{
+	std::string text;
+	MoaText target {.context = &text, .assign = [](void* context, const char* utf8, size_t size) {
+		                if (utf8 != nullptr)
+		                {
+			                static_cast<std::string*>(context)->assign(utf8, size);
+		                }
+	                }};
+	if (query.query(query.user, params.c_str(), &target) == 0)
+	{
+		return moa::MakeError("{}", text.empty() ? std::format("the query '{}' failed", query.name) : text);
+	}
+	return text;
+}
 
 HostTable::HostTable(HostServices& services, OwnerId owner, HostInfo info)
     : _services(services)
@@ -225,6 +313,9 @@ HostTable::HostTable(HostServices& services, OwnerId owner, HostInfo info)
 	_api.addReadout = &AddReadout;
 	_api.setStatusReader = &SetStatusReader;
 	_api.showMessage = &ShowMessage;
+	_api.addQuery = &AddQuery;
+	_api.listQueries = &ListQueries;
+	_api.callQuery = &CallQuery;
 }
 
 uint32_t HostTable::Refuse(std::string_view what, const moa::Error& error)

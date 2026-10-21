@@ -39,6 +39,10 @@ public:
 		return {};
 	}
 	void ShowMessage(OwnerId /*owner*/, std::string_view text, double /*seconds*/) override { messages.emplace_back(text); }
+	moa::Result<std::string> CallQuery(const QueryEntry& query, const std::string& params) override
+	{
+		return RunQueryFunction(query, params);
+	}
 
 	[[nodiscard]] bool Logged(std::string_view part) const
 	{
@@ -78,6 +82,7 @@ TEST(ModDllLoader, LoadsACorrectModAndKeepsItsRegistrations)
 	ASSERT_EQ(services.registry.Fields().size(), 1u);
 	ASSERT_EQ(services.registry.Actions().size(), 1u);
 	ASSERT_EQ(services.registry.MethodCallbacks().size(), 1u);
+	ASSERT_EQ(services.registry.Queries().size(), 1u);
 
 	// The loader calls the mod through the registry, as the game side does.
 	const auto& settings = services.registry.Settings()[0];
@@ -97,8 +102,23 @@ TEST(ModDllLoader, LoadsACorrectModAndKeepsItsRegistrations)
 	ASSERT_NE(calls, nullptr);
 	EXPECT_EQ(calls(), 2001);
 
-	// After the init, the table refuses new registrations.
+	// The inspector lists the query of the mod and calls it through the table.
 	const auto& api = mod.table->Api();
+	ASSERT_EQ(MOA_HOST_API_HAS(&api, callQuery), 1);
+	std::string text;
+	MoaText target {.context = &text, .assign = [](void* context, const char* utf8, size_t size) {
+		                static_cast<std::string*>(context)->assign(utf8, size);
+	                }};
+	api.listQueries(api.context, &target);
+	EXPECT_EQ(text, R"([{"help":"The speed of the test mod.","mod":"Test mod","name":"test.speed"}])");
+	EXPECT_EQ(api.callQuery(api.context, "test.speed", R"({"add": 1.5})", &target), 1u);
+	EXPECT_EQ(text, R"({"speed":6.0})");
+	EXPECT_EQ(api.callQuery(api.context, "test.speed", R"({"add": "x"})", &target), 0u);
+	EXPECT_NE(text.find("type must be number"), std::string::npos);
+	EXPECT_EQ(api.callQuery(api.context, "test.other", nullptr, &target), 0u);
+	EXPECT_EQ(text, "the query 'test.other' is not known");
+
+	// After the init, the table refuses new registrations.
 	EXPECT_EQ(api.addSettings(api.context, "late", settings.load, nullptr), 0u);
 	EXPECT_TRUE(services.Logged("only in MoaModInit"));
 	loader.ShutdownAll();
@@ -116,6 +136,7 @@ TEST(ModDllLoader, UnloadsAModWhoseInitFailsAndRemovesItsRegistrations)
 	EXPECT_TRUE(services.registry.Settings().empty());
 	EXPECT_TRUE(services.registry.Fields().empty());
 	EXPECT_TRUE(services.registry.MethodCallbacks().empty());
+	EXPECT_TRUE(services.registry.Queries().empty());
 	// The section of the failed mod is free for the next mod.
 	EXPECT_EQ(loader.Load(TestMod("moa_test_mod_good.dll")).state, ModDllState::Loaded);
 	loader.ShutdownAll();

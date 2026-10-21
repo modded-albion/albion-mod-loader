@@ -22,6 +22,10 @@ uint32_t Load(void* /*user*/, const char* /*json*/, MoaText* /*error*/)
 {
 	return 1;
 }
+uint32_t Query(void* /*user*/, const char* /*params*/, MoaText* /*result*/)
+{
+	return 1;
+}
 void Get(void* /*user*/, MoaFieldState* /*state*/) {}
 uint32_t Set(void* /*user*/, const MoaFieldValue* /*value*/, uint32_t /*save*/, MoaText* /*message*/)
 {
@@ -174,4 +178,26 @@ TEST(ModRegistry, AHotkeyNameHasOneOwnerAndTheFileReplacesTheDefault)
 	ASSERT_EQ(errors.size(), 1u);
 	EXPECT_NE(errors[0].find("noSuchAction"), std::string::npos);
 	EXPECT_EQ(registry.FindActionByHotkey("resetView")->owner, 1u);
+}
+
+TEST(ModRegistry, AQueryNameHasOneOwnerAndAnOwnerRemovalRemovesItsQueries)
+{
+	ModRegistry registry;
+	registry.SetOwnerName(1, "Sky");
+	ASSERT_TRUE(registry.AddQuery(1, "sky.state", "The state of the sky.", &Query, nullptr));
+	ASSERT_TRUE(registry.AddQuery(2, "camera.state", "", &Query, nullptr));
+	const auto taken = registry.AddQuery(2, "sky.state", "", &Query, nullptr);
+	ASSERT_FALSE(taken);
+	EXPECT_NE(taken.GetError().message.find("belongs to Sky"), std::string::npos);
+	EXPECT_FALSE(registry.AddQuery(2, "", "", &Query, nullptr));
+	EXPECT_FALSE(registry.AddQuery(2, "1st", "", &Query, nullptr));
+	EXPECT_FALSE(registry.AddQuery(2, "bad name", "", &Query, nullptr));
+	EXPECT_FALSE(registry.AddQuery(2, "no.function", "", nullptr, nullptr));
+	ASSERT_NE(registry.FindQuery("sky.state"), nullptr);
+	EXPECT_EQ(registry.FindQuery("sky.state")->help, "The state of the sky.");
+	EXPECT_EQ(registry.FindQuery("sky.other"), nullptr);
+	registry.RemoveOwner(1);
+	EXPECT_EQ(registry.FindQuery("sky.state"), nullptr);
+	ASSERT_EQ(registry.Queries().size(), 1u);
+	EXPECT_EQ(registry.Queries()[0].name, "camera.state");
 }

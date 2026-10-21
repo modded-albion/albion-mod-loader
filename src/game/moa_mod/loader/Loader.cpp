@@ -21,6 +21,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <stop_token>
 #include <string>
 #include <thread>
@@ -51,6 +52,7 @@
 #include "moa_mod/ModStatus.h"
 #include "moa_mod/maps/MapsMod.h"
 #include "moa_mod/objects/ObjectsMod.h"
+#include "moa_mod/overlay/DxgiHooks.h"
 #include "moa_mod/overlay/GameMenuProbe.h"
 #include "moa_mod/overlay/Overlay.h"
 #include "proxy/VersionExports.h"
@@ -294,6 +296,13 @@ struct LoaderField
 	const settings::Field<LoaderSettings>* field = nullptr;
 };
 
+/// A query of the loader itself: the state and the function of the query.
+struct LoaderQuery
+{
+	LoaderState* state = nullptr;
+	std::function<nlohmann::json(LoaderState& state, const nlohmann::json& params)> run;
+};
+
 struct LoaderState final: HostServices
 {
 	Il2CppApi api;
@@ -313,6 +322,9 @@ struct LoaderState final: HostServices
 	ModRegistry registry;
 	std::unique_ptr<ModDllLoader> dlls;
 	std::vector<std::unique_ptr<LoaderField>> loaderFields;
+	std::vector<std::unique_ptr<LoaderQuery>> loaderQueries;
+	/// The thread of the frame hook: the main thread of the game. Zero before the first frame.
+	std::atomic<DWORD> mainThread = 0;
 	/// One hook on each managed method that has callbacks.
 	std::map<MethodKey, std::unique_ptr<MethodHook>> hooks;
 	/// The hook on `GameManager.OnApplicationQuit`: the mods stop when the game quits.
@@ -362,6 +374,7 @@ struct LoaderState final: HostServices
 	moa::Result<void> PostTask(OwnerId owner, MoaTaskFn task, void* user) override;
 	moa::Result<void> SaveSettings(OwnerId owner, std::string_view patch) override;
 	void ShowMessage(OwnerId owner, std::string_view text, double seconds) override;
+	moa::Result<std::string> CallQuery(const QueryEntry& query, const std::string& params) override;
 };
 
 /// The state, for the removal of the hooks when the DLL unloads. Only `Start` writes it, and `DllMain` reads it.
@@ -470,6 +483,27 @@ void LoaderState::ShowMessage(OwnerId owner, std::string_view text, double secon
 		}
 		return nlohmann::json();
 	}));
+}
+
+moa::Result<std::string> LoaderState::CallQuery(const QueryEntry& query, const std::string& params)
+{
+	// The queries read and change Unity objects, so they run only on the main thread.
+	if (GetCurrentThreadId() != mainThread.load())
+	{
+		return moa::MakeError("the query '{}' runs only on the main thread of the game", query.name);
+	}
+	if (registry.Failed(query.owner))
+	{
+		return moa::MakeError("the loader calls {} no more: {}", registry.OwnerName(query.owner),
+		                      registry.FailReason(query.owner));
+	}
+	moa::Result<std::string> answer = moa::MakeError("the query '{}' did not complete", query.name);
+	auto work = [&] { answer = RunQueryFunction(query, params); };
+	if (!CallMod(*this, query.owner, "a query", work))
+	{
+		return moa::MakeError("an access violation in the query '{}'", query.name);
+	}
+	return answer;
 }
 
 /// Tell the user about a change: a message of the game and a line in the log. Main thread.
@@ -1175,8 +1209,9 @@ void ReadMenus(LoaderState& state, OverlaySnapshot& snapshot)
 	}
 }
 
-/// The status of each mod DLL (its status reader) and of the parts of the loader. Main thread.
-[[nodiscard]] nlohmann::json ReadStatuses(LoaderState& state)
+/// The status of each mod DLL (its status reader) and of the parts of the loader. Main thread. The menu bar shows the
+/// name of the mod. With `keepNames`, a status keeps its own name and gets the name of the mod as "mod".
+[[nodiscard]] nlohmann::json ReadStatuses(LoaderState& state, bool keepNames = false)
 {
 	auto list = nlohmann::json::array({state.objectsStatus.Describe(), state.mapsStatus.Describe()});
 	for (const auto& entry : state.registry.Statuses())
@@ -1193,7 +1228,14 @@ void ReadMenus(LoaderState& state, OverlaySnapshot& snapshot)
 		{
 			status = {{"error", "the status is not a JSON object"}};
 		}
-		status["name"] = state.registry.OwnerName(entry.owner);
+		if (keepNames && status.contains("name"))
+		{
+			status["mod"] = state.registry.OwnerName(entry.owner);
+		}
+		else
+		{
+			status["name"] = state.registry.OwnerName(entry.owner);
+		}
 		list.push_back(std::move(status));
 	}
 	if (state.dlls)
@@ -1329,6 +1371,229 @@ void ApplyOverlayCommand(LoaderState& state, const OverlayCommand& command)
 	if (state.overlay)
 	{
 		state.overlay->Publish(MakeOverlaySnapshot(state));
+	}
+}
+
+/// Find a field of the loader or of a mod by its object of mods.json and its key.
+[[nodiscard]] const FieldEntry* FindFieldByPath(const LoaderState& state, const std::string& section, const std::string& key)
+{
+	const auto& fields = state.registry.Fields();
+	const auto found =
+	    std::ranges::find_if(fields, [&](const FieldEntry& field) { return field.section == section && field.key == key; });
+	return found != fields.end() ? &*found : nullptr;
+}
+
+/// The value of a JSON parameter for a field of the menu bar.
+[[nodiscard]] MoaFieldValue FieldValueOf(const FieldEntry& field, const nlohmann::json& value)
+{
+	MoaFieldValue result {};
+	switch (field.kind)
+	{
+	case MOA_FIELD_TOGGLE:
+		if (!value.is_boolean())
+		{
+			throw std::runtime_error(std::format("'{}' needs true or false", field.Path()));
+		}
+		result.toggle = value.get<bool>() ? 1u : 0u;
+		break;
+	case MOA_FIELD_NUMBER:
+		if (!value.is_number())
+		{
+			throw std::runtime_error(std::format("'{}' needs a number", field.Path()));
+		}
+		result.number = value.get<double>();
+		break;
+	case MOA_FIELD_CHOICE:
+	{
+		const auto choice =
+		    value.is_string() ? std::ranges::find(field.choices, value.get<std::string>()) : field.choices.end();
+		if (choice == field.choices.end())
+		{
+			throw std::runtime_error(std::format("'{}' needs one of its names", field.Path()));
+		}
+		result.choice = static_cast<uint32_t>(std::distance(field.choices.begin(), choice));
+		break;
+	}
+	}
+	return result;
+}
+
+/// The state of the settings file and of the settings that the loader uses now. Main thread.
+[[nodiscard]] nlohmann::json DescribeSettings(const LoaderState& state)
+{
+	// The file can differ from the settings in use: a value that needs a restart, or a file with an error.
+	const auto path = ModSettingsPath();
+	const auto text = ReadTextFile(path);
+	const auto file = text ? ParseLoaderSettings(*text)
+	                       : moa::Result<LoaderSettings>(moa::MakeError("the file {} cannot be read", path.string()));
+	nlohmann::json result {
+	    {"path", path.string()},
+	    {"live", state.live},
+	    {"hotkeysReady", state.hotkeyInput.has_value()},
+	    {"current", LoaderSettingsJson(state.settings)},
+	    {"requested", LoaderSettingsJson(state.requested)},
+	    {"lastReload", state.lastReload},
+	    {"messages", state.messages ? state.messages->Describe() : nlohmann::json()},
+	};
+	result["file"] =
+	    file ? nlohmann::json {{"correct", true}, {"restartOnly", CompareLoaderSettings(state.settings, *file).restartOnly}}
+	         : nlohmann::json {{"correct", false}, {"error", file.GetError().message}};
+	return result;
+}
+
+/// Change a field or turn a mod on or off, as the menu bar does. Main thread.
+[[nodiscard]] nlohmann::json EditAsMenuBar(LoaderState& state, const nlohmann::json& params)
+{
+	if (params.contains("mod") || params.contains("dll"))
+	{
+		const bool zip = params.contains("mod");
+		const OverlayCommand command {.kind = zip ? OverlayCommand::Kind::Mod : OverlayCommand::Kind::ModDll,
+		                              .on = params.at("enabled").get<bool>(),
+		                              .name = params.at(zip ? "mod" : "dll").get<std::string>()};
+		ApplyOverlayCommand(state, command);
+		return {{"posted", zip ? "mods.disabled" : "modDlls.disabled"}};
+	}
+	const auto section = params.value("section", std::string());
+	const auto key = params.at("key").get<std::string>();
+	const auto* field = FindFieldByPath(state, section, key);
+	if (field == nullptr)
+	{
+		throw std::runtime_error("the menu bar has no such field");
+	}
+	const OverlayCommand command {.kind = OverlayCommand::Kind::Edit,
+	                              .id = field->id,
+	                              .value = FieldValueOf(*field, params.at("value")),
+	                              .save = params.value("save", true)};
+	ApplyOverlayCommand(state, command);
+	const auto item = ReadField(state, *field);
+	return {{"posted", field->Path()}, {"value", FieldJson(*field, item.state.value)}};
+}
+
+/// Register the queries of the loader itself (owner 0). The inspector mod calls them on the main thread.
+void RegisterLoaderQueries(LoaderState& state)
+{
+	using Run = std::function<nlohmann::json(LoaderState&, const nlohmann::json&)>;
+	struct Item
+	{
+		const char* name;
+		const char* help;
+		Run run;
+	};
+	const std::array items {
+	    Item {"mods.status", "The state of the loader, of its parts and of each mod.",
+	          [](LoaderState& s, const nlohmann::json& /*params*/) {
+		          return nlohmann::json {
+		              {"settings", ModSettingsPath().string()},
+		              {"frameHook", s.settings.frameHook},
+		              {"live", s.live},
+		              {"exports", s.managed.has_value()},
+		              {"mods", ReadStatuses(s, true)},
+		              {"dlls", DescribeDlls(s)},
+		              {"overlay", s.overlay ? s.overlay->Describe() : nlohmann::json()},
+		          };
+	          }},
+	    Item {"mods.list", "The mod zips and the mod DLLs, as the Mod list shows them.",
+	          [](LoaderState& s, const nlohmann::json& /*params*/) {
+		          auto list = DescribeModList(s);
+		          list["dlls"] = DescribeDlls(s);
+		          return list;
+	          }},
+	    Item {"mods.settings", "The settings file and the settings that the loader uses now.",
+	          [](LoaderState& s, const nlohmann::json& /*params*/) { return DescribeSettings(s); }},
+	    Item {"mods.reload", "Read mods.json again and give each mod its objects.",
+	          [](LoaderState& s, const nlohmann::json& /*params*/) { return ApplyReload(s, "inspector"); }},
+	    Item {"maps.status", "The state of the map override.",
+	          [](LoaderState& s, const nlohmann::json& /*params*/) {
+		          return s.maps ? s.maps->State() : nlohmann::json {{"installed", false}, {"status", s.mapsStatus.Describe()}};
+	          }},
+	    Item {"objects.status", "The state of the custom objects. Parameter: filter, a part of a resource path.",
+	          [](LoaderState& s, const nlohmann::json& params) {
+		          return s.objects ? s.objects->State(params.value("filter", std::string()))
+		                           : nlohmann::json {{"installed", false}, {"status", s.objectsStatus.Describe()}};
+	          }},
+	    Item {"hooks.status", "The method hooks of the loader and the count of the tasks that wait.",
+	          [](LoaderState& s, const nlohmann::json& /*params*/) {
+		          auto hooks = nlohmann::json::object();
+		          for (const auto& [method, hook] : s.hooks)
+		          {
+			          hooks[method.Text()] = hook->Describe();
+		          }
+		          const auto frame = s.hooks.find(k_FrameMethod);
+		          return nlohmann::json {
+		              {"settings", ModSettingsPath().string()},
+		              {"frameHook", frame != s.hooks.end() ? frame->second->Describe() : nlohmann::json()},
+		              {"hooks", std::move(hooks)},
+		              {"quitHook", s.quitHook ? s.quitHook->Describe() : nlohmann::json()},
+		              {"pendingTasks", s.tasks.Pending()},
+		          };
+	          }},
+	    Item {"overlay.pin", "Pin the menu bar as its hotkey does. Parameter: pinned (true or false).",
+	          [](LoaderState& s, const nlohmann::json& params) {
+		          if (!s.overlay)
+		          {
+			          throw std::runtime_error("the menu bar is not installed (see the log)");
+		          }
+		          const bool pinned = params.value("pinned", true);
+		          if (s.overlay->Describe().value("pinned", false) != pinned)
+		          {
+			          s.overlayPin = true;
+		          }
+		          return nlohmann::json {{"pinned", pinned}};
+	          }},
+	    Item {"overlay.edit",
+	          "Change a field as the menu bar does: section, key, value and save. Or turn a mod zip (mod) or a mod DLL "
+	          "(dll) on or off with enabled.",
+	          [](LoaderState& s, const nlohmann::json& params) { return EditAsMenuBar(s, params); }},
+	    Item {"overlay.probe", "Make a new swap chain, as the game does when it changes the display mode.",
+	          [](LoaderState& s, const nlohmann::json& /*params*/) {
+		          if (!s.overlay)
+		          {
+			          throw std::runtime_error("the menu bar is not installed (see the log)");
+		          }
+		          if (auto probe = overlay::DxgiHooks::ProbeAgain(); !probe)
+		          {
+			          throw std::runtime_error(probe.GetError().message);
+		          }
+		          return nlohmann::json {{"probe", true}};
+	          }},
+	};
+	const auto trampoline = [](void* user, const char* params, MoaText* result) -> uint32_t {
+		auto& query = *static_cast<LoaderQuery*>(user);
+		const auto give = [result](const std::string& text) { result->assign(result->context, text.data(), text.size()); };
+		// An exception is the normal error of a query: it goes to the caller.
+		try
+		{
+			auto object = nlohmann::json::parse(params == nullptr ? "{}" : params, nullptr, false);
+			if (object.is_null())
+			{
+				object = nlohmann::json::object();
+			}
+			if (object.is_discarded() || !object.is_object())
+			{
+				give("the parameters are not a JSON object");
+				return 0;
+			}
+			give(query.run(*query.state, object).dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+			return 1;
+		}
+		catch (const std::exception& error)
+		{
+			give(error.what());
+		}
+		catch (...)
+		{
+			give("an unknown exception in the query");
+		}
+		return 0;
+	};
+	for (const auto& item : items)
+	{
+		auto query = std::make_unique<LoaderQuery>(LoaderQuery {.state = &state, .run = item.run});
+		if (auto added = state.registry.AddQuery(k_LoaderOwner, item.name, item.help, trampoline, query.get()); !added)
+		{
+			spdlog::error("loader: the query {} is refused: {}", item.name, added.GetError().message);
+		}
+		state.loaderQueries.push_back(std::move(query));
 	}
 }
 
@@ -1574,7 +1839,10 @@ void AddFrameWork(LoaderState& state)
 		(void)frameHook.After().Add("overlay", [&state, &frameHook] { TickOverlay(state, frameHook.Instance()); });
 	}
 	(void)frameHook.After().Add("startup", [&state] { RunStartupStep(state); });
-	(void)frameHook.After().Add("tasks", [&state] { state.tasks.RunPending(); });
+	(void)frameHook.After().Add("tasks", [&state] {
+		state.mainThread = GetCurrentThreadId();
+		state.tasks.RunPending();
+	});
 }
 
 /// Install the hook on the resource loads of the game for the custom objects.
@@ -1806,6 +2074,7 @@ void Start()
 			InstallMaps(*state);
 		}
 		RegisterLoaderItems(*state);
+		RegisterLoaderQueries(*state);
 		LoadModDlls(*state, dllFiles);
 		(void)DeliverSettings(*state);
 		if (state->live)

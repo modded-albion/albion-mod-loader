@@ -27,7 +27,12 @@ public:
 	[[nodiscard]] virtual moa::Result<void> PostTask(OwnerId owner, MoaTaskFn task, void* user) = 0;
 	[[nodiscard]] virtual moa::Result<void> SaveSettings(OwnerId owner, std::string_view patch) = 0;
 	virtual void ShowMessage(OwnerId owner, std::string_view text, double seconds) = 0;
+	/// Call a query with the JSON text of its parameters, and return the JSON text of its answer or the error.
+	[[nodiscard]] virtual moa::Result<std::string> CallQuery(const QueryEntry& query, const std::string& params) = 0;
 };
+
+/// Call the function of a query and return its answer or its error. It does not guard the call: the caller does.
+[[nodiscard]] moa::Result<std::string> RunQueryFunction(const QueryEntry& query, const std::string& params);
 
 /// The texts of the table. They stay valid as long as the table.
 struct HostInfo
@@ -43,7 +48,7 @@ struct HostInfo
 /// `context`, catches every exception, and writes each refusal to the log with the name of the mod.
 ///
 /// The registrations are open only during `MoaModInit`: after `Close`, the table refuses them. The log, the tasks, the
-/// changes of mods.json and the messages work until the process ends.
+/// changes of mods.json, the messages and the calls of the queries work until the process ends.
 class HostTable
 {
 public:

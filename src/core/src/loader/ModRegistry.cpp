@@ -30,6 +30,18 @@ namespace
 	    name, [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'; });
 }
 
+/// A name of a query: letters, digits, '.', '_' and '-', with a letter first, for example "sky.state".
+[[nodiscard]] bool IsQueryName(std::string_view name)
+{
+	if (name.empty() || name.size() > 64 || !((name[0] >= 'a' && name[0] <= 'z') || (name[0] >= 'A' && name[0] <= 'Z')))
+	{
+		return false;
+	}
+	return std::ranges::all_of(name, [](char c) {
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-';
+	});
+}
+
 [[nodiscard]] bool IsLoaderKey(std::string_view section)
 {
 	return section.empty() || std::ranges::find(k_LoaderKeys, section) != k_LoaderKeys.end();
@@ -263,6 +275,27 @@ moa::Result<void> ModRegistry::SetStatusReader(OwnerId owner, MoaReadFn read, vo
 	return {};
 }
 
+moa::Result<void> ModRegistry::AddQuery(OwnerId owner, std::string name, std::string help, MoaQueryFn query, void* user)
+{
+	if (query == nullptr || !IsQueryName(name))
+	{
+		return moa::MakeError("the query '{}' needs a name of letters, digits, '.', '_' and '-', and a function", name);
+	}
+	if (const auto* existing = FindQuery(name); existing != nullptr)
+	{
+		return moa::MakeError("the query '{}' belongs to {}", name, OwnerName(existing->owner));
+	}
+	_queries.push_back(
+	    QueryEntry {.owner = owner, .name = std::move(name), .help = std::move(help), .query = query, .user = user});
+	return {};
+}
+
+const QueryEntry* ModRegistry::FindQuery(std::string_view name) const
+{
+	const auto found = std::ranges::find(_queries, name, &QueryEntry::name);
+	return found != _queries.end() ? &*found : nullptr;
+}
+
 void ModRegistry::RemoveOwner(OwnerId owner)
 {
 	EraseOwner(_callbacks, owner);
@@ -271,6 +304,7 @@ void ModRegistry::RemoveOwner(OwnerId owner)
 	EraseOwner(_actions, owner);
 	EraseOwner(_readouts, owner);
 	EraseOwner(_statuses, owner);
+	EraseOwner(_queries, owner);
 }
 
 void ModRegistry::SetFailed(OwnerId owner, std::string reason)
