@@ -15,7 +15,7 @@ tools\preset.bat x64-release
 
 `ctest --preset x64-release` runs the GoogleTest tests
 
-## Install (not done by the build)
+## How to install
 
 The install changes the Steam game, so only the user starts it. `tools/install.py` does it:
 
